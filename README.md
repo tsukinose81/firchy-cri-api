@@ -135,6 +135,11 @@ go run main.go 192.168.121.232:2375
 - `Stop(ctx)` - サーバーを停止
 - `Status(ctx)` - サーバーステータスを取得
 
+### MinecraftServerConfig
+
+- `DefaultMinecraftConfig()` - デフォルトの設定を取得
+- `Validate()` - 設定が有効かどうかを検証
+
 ## 要件
 
 - Go 1.21+

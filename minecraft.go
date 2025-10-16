@@ -47,6 +47,32 @@ func DefaultMinecraftConfig() *MinecraftServerConfig {
 	}
 }
 
+// Validate checks if the MinecraftServerConfig is valid
+func (c *MinecraftServerConfig) Validate() error {
+	if c.PodName == "" {
+		return fmt.Errorf("pod name cannot be empty")
+	}
+	if c.Namespace == "" {
+		return fmt.Errorf("namespace cannot be empty")
+	}
+	if c.UID == "" {
+		return fmt.Errorf("UID cannot be empty")
+	}
+	if c.ContainerName == "" {
+		return fmt.Errorf("container name cannot be empty")
+	}
+	if c.Image == "" {
+		return fmt.Errorf("image cannot be empty")
+	}
+	if c.ServerPort <= 0 || c.ServerPort > 65535 {
+		return fmt.Errorf("server port must be between 1 and 65535, got %d", c.ServerPort)
+	}
+	if c.HostPort <= 0 || c.HostPort > 65535 {
+		return fmt.Errorf("host port must be between 1 and 65535, got %d", c.HostPort)
+	}
+	return nil
+}
+
 // MinecraftServer represents a running Minecraft server instance
 type MinecraftServer struct {
 	Client      *Client
@@ -59,6 +85,11 @@ type MinecraftServer struct {
 func (c *Client) StartMinecraftServer(ctx context.Context, config *MinecraftServerConfig) (*MinecraftServer, error) {
 	if config == nil {
 		config = DefaultMinecraftConfig()
+	}
+
+	// Validate configuration
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	// Pull the image first
