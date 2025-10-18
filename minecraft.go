@@ -24,8 +24,8 @@ type MinecraftServerConfig struct {
 	EULA         bool
 	
 	// Port mapping
-	ServerPort   int32
-	HostPort     int32
+	ServerPort   int32  // Container port (default: 25565)
+	HostPort     int32  // Host port (0 for auto-assign from 1024-49151)
 	
 	// Additional environment variables
 	ExtraEnv     map[string]string
@@ -41,8 +41,8 @@ func DefaultMinecraftConfig() *MinecraftServerConfig {
 		Image:         "docker.io/itzg/minecraft-server:latest",
 		ServerType:    "PAPER",
 		EULA:          true,
-		ServerPort:    25565,
-		HostPort:      25565,
+		ServerPort:    25565,  // Container port (Minecraft default)
+		HostPort:      0,      // 0 = auto-assign from 1024-49151
 		ExtraEnv:      make(map[string]string),
 	}
 }
@@ -61,6 +61,19 @@ func (c *Client) StartMinecraftServer(ctx context.Context, config *MinecraftServ
 		config = DefaultMinecraftConfig()
 	}
 
+	// Auto-assign host port if not specified or set to 0
+	if config.HostPort == 0 {
+		fmt.Printf("Finding available port in range 1024-49151...\n")
+		availablePort, err := FindAvailablePort(1024, 49151)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find available port: %w", err)
+		}
+		config.HostPort = availablePort
+		fmt.Printf("✅ Assigned host port: %d\n", config.HostPort)
+	} else {
+		fmt.Printf("Using specified host port: %d\n", config.HostPort)
+	}
+
 	// Pull the image first
 	fmt.Printf("Pulling image: %s\n", config.Image)
 	_, err := c.PullImage(ctx, config.Image)
@@ -76,6 +89,8 @@ func (c *Client) StartMinecraftServer(ctx context.Context, config *MinecraftServ
 			HostPort:      config.HostPort,
 		},
 	}
+
+	fmt.Printf("Port mapping: Container %d -> Host %d\n", config.ServerPort, config.HostPort)
 
 	// Create pod config
 	podConfig := &runtime.PodSandboxConfig{
@@ -95,10 +110,16 @@ func (c *Client) StartMinecraftServer(ctx context.Context, config *MinecraftServ
 
 	// Create and run pod sandbox
 	fmt.Printf("Creating pod sandbox: %s\n", config.PodName)
-	podID, err := c.RunPodSandbox(ctx, config.PodName, config.Namespace, config.UID, portMappings)
+	podReq := &runtime.RunPodSandboxRequest{
+		Config:         podConfig,
+		RuntimeHandler: "kata",
+	}
+	
+	podResp, err := c.RuntimeClient().RunPodSandbox(ctx, podReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pod: %w", err)
 	}
+	podID := podResp.PodSandboxId
 
 	// Prepare environment variables
 	envs := map[string]string{
@@ -165,7 +186,12 @@ func (c *Client) StartMinecraftServer(ctx context.Context, config *MinecraftServ
 	fmt.Printf("✅ Minecraft server started successfully!\n")
 	fmt.Printf("   Pod ID: %s\n", podID)
 	fmt.Printf("   Container ID: %s\n", containerID)
-	fmt.Printf("   Port: %d\n", config.HostPort)
+	fmt.Printf("   Container Port: %d (Minecraft default)\n", config.ServerPort)
+	fmt.Printf("   Host Port: %d\n", config.HostPort)
+	fmt.Printf("\n")
+	fmt.Printf("🎮 Connect to Minecraft server:\n")
+	fmt.Printf("   Address: <VM_IP>:%d\n", config.HostPort)
+	fmt.Printf("   Example: 192.168.121.232:%d\n", config.HostPort)
 
 	return &MinecraftServer{
 		Client:      c,
@@ -177,7 +203,7 @@ func (c *Client) StartMinecraftServer(ctx context.Context, config *MinecraftServ
 
 // Stop stops the Minecraft server
 func (m *MinecraftServer) Stop(ctx context.Context) error {
-	fmt.Printf("Stopping Minecraft server (Pod: %s)\n", m.PodID)
+	fmt.Printf("Stopping Minecraft server (Pod: %s, Port: %d)\n", m.PodID, m.Config.HostPort)
 	
 	err := m.Client.StopPodSandbox(ctx, m.PodID)
 	if err != nil {
@@ -189,7 +215,7 @@ func (m *MinecraftServer) Stop(ctx context.Context) error {
 		return fmt.Errorf("failed to remove pod: %w", err)
 	}
 	
-	fmt.Printf("✅ Minecraft server stopped successfully\n")
+	fmt.Printf("✅ Minecraft server stopped successfully (released port %d)\n", m.Config.HostPort)
 	return nil
 }
 

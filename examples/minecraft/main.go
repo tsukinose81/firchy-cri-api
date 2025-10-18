@@ -40,6 +40,8 @@ func main() {
 	// Minecraftサーバー設定
 	config := criapi.DefaultMinecraftConfig()
 	config.ServerType = "PAPER"
+	// HostPort = 0 for auto-assignment from 1024-49151
+	config.HostPort = 0
 	config.ExtraEnv = map[string]string{
 		"MEMORY":      "2G",
 		"DIFFICULTY":  "normal",
